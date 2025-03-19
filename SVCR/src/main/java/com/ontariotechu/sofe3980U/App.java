@@ -5,97 +5,96 @@ import java.io.FileReader;
 import java.util.List;
 
 /**
- * This program evaluates multiple regression models based on their Mean Squared Error (MSE)
- * and recommends the best-performing model.
+ * This program evaluates regression models based on error metrics and identifies the best model.
  */
-public class App {
-	public static void main(String[] args) {
-		// List of CSV files containing model predictions
-		String[] modelFiles = {"model_1.csv", "model_2.csv", "model_3.csv"};
+public class ModelEvaluator {
+    public static void main(String[] args) {
+        // CSV files containing model results
+        String[] models = {"model_1.csv", "model_2.csv", "model_3.csv"};
 
-		String bestModel = "";
-		double minError = Double.MAX_VALUE;
+        String optimalModel = "";
+        double lowestMSE = Double.MAX_VALUE;
 
-		// Iterate through each model file to evaluate errors
-		for (String modelFile : modelFiles) {
-			double mse = evaluateModel(modelFile);
+        // Iterate through each model to compute error metrics
+        for (String model : models) {
+            double mse = computeErrors(model);
 
-			// Update best model if a lower MSE is found
-			if (mse < minError) {
-				minError = mse;
-				bestModel = modelFile;
-			}
-		}
+            // Update best model based on MSE
+            if (mse < lowestMSE) {
+                lowestMSE = mse;
+                optimalModel = model;
+            }
+        }
 
-		// Display the recommended model based on the lowest error
-		System.out.println("\nBest Model: " + bestModel + " (MSE: " + String.format("%.5f", minError) + ")");
-	}
+        // Display the model with the lowest error
+        System.out.println("\nBest Model Based on MSE: " + optimalModel + " (MSE: " + String.format("%.6f", lowestMSE) + ")");
+    }
 
-	/**
-	 * Reads a CSV file and calculates Mean Squared Error (MSE), Mean Absolute Error (MAE),
-	 * and Mean Absolute Relative Error (MARE) based on true vs predicted values.
-	 *
-	 * @param filePath The CSV file path containing true and predicted values
-	 * @return The calculated Mean Squared Error (MSE)
-	 */
-	private static double evaluateModel(String filePath) {
-		List<String[]> data;
+    /**
+     * Reads a CSV file to calculate Mean Squared Error (MSE), Mean Absolute Error (MAE),
+     * and Mean Absolute Relative Error (MARE) using actual vs predicted values.
+     *
+     * @param filePath The dataset file path
+     * @return The Mean Squared Error (MSE)
+     */
+    private static double computeErrors(String filePath) {
+        List<String[]> dataset;
 
-		try (FileReader fileReader = new FileReader(filePath);
-			 CSVReader csvReader = new CSVReaderBuilder(fileReader).withSkipLines(1).build()) {
+        try (FileReader reader = new FileReader(filePath);
+             CSVReader csvReader = new CSVReaderBuilder(reader).withSkipLines(1).build()) {
 
-			data = csvReader.readAll();
-		} catch (Exception e) {
-			System.out.println("Error reading file: " + filePath);
-			return Double.MAX_VALUE; // Return high error for faulty files
-		}
+            dataset = csvReader.readAll();
+        } catch (Exception e) {
+            System.out.println("Error processing file: " + filePath);
+            return Double.MAX_VALUE;
+        }
 
-		int sampleCount = data.size();
-		if (sampleCount == 0) {
-			System.out.println("Empty file: " + filePath);
-			return Double.MAX_VALUE;
-		}
+        int totalSamples = dataset.size();
+        if (totalSamples == 0) {
+            System.out.println("File is empty: " + filePath);
+            return Double.MAX_VALUE;
+        }
 
-		double mse = 0, mae = 0, mare = 0;
-		double epsilon = 1e-10; // Small value to prevent division by zero
-		int displayLimit = Math.min(sampleCount, 10);
+        double mse = 0, mae = 0, mare = 0;
+        final double smallValue = 1e-10;
+        int previewCount = Math.min(totalSamples, 10);
 
-		System.out.println("\nEvaluating " + filePath + "...");
-		System.out.println("True Value\tPredicted Value");
+        System.out.println("\nProcessing: " + filePath);
+        System.out.println("Actual\tPredicted");
 
-		// Process each row in the dataset
-		for (int i = 0; i < sampleCount; i++) {
-			String[] row = data.get(i);
+        // Iterate through dataset rows
+        for (int i = 0; i < totalSamples; i++) {
+            String[] record = dataset.get(i);
 
-			try {
-				float actual = Float.parseFloat(row[0]);
-				float predicted = Float.parseFloat(row[1]);
+            try {
+                float actualValue = Float.parseFloat(record[0]);
+                float predictedValue = Float.parseFloat(record[1]);
 
-				double error = actual - predicted;
-				mse += error * error;
-				mae += Math.abs(error);
-				mare += (Math.abs(error) / (Math.abs(actual) + epsilon)) * 100;
+                double error = actualValue - predictedValue;
+                mse += error * error;
+                mae += Math.abs(error);
+                mare += (Math.abs(error) / (Math.abs(actualValue) + smallValue));
 
-				// Display first few samples
-				if (i < displayLimit) {
-					System.out.println(actual + "\t" + predicted);
-				}
-			} catch (NumberFormatException ex) {
-				System.out.println("Invalid data format in file: " + filePath);
-				return Double.MAX_VALUE;
-			}
-		}
+                // Display a sample of values
+                if (i < previewCount) {
+                    System.out.println(actualValue + "\t" + predictedValue);
+                }
+            } catch (NumberFormatException ex) {
+                System.out.println("Invalid data in file: " + filePath);
+                return Double.MAX_VALUE;
+            }
+        }
 
-		// Compute final error metrics
-		mse /= sampleCount;
-		mae /= sampleCount;
-		mare /= sampleCount;
+        // Compute final error values
+        mse /= totalSamples;
+        mae /= totalSamples;
+        mare /= totalSamples;
 
-		// Print error metrics
-		System.out.println("\nMSE: " + String.format("%.5f", mse));
-		System.out.println("MAE: " + String.format("%.5f", mae));
-		System.out.println("MARE: " + String.format("%.5f", mare) + " %\n");
+        // Output error metrics
+        System.out.println("\nMSE: " + String.format("%.6f", mse));
+        System.out.println("MAE: " + String.format("%.6f", mae));
+        System.out.println("MARE: " + String.format("%.9f", mare));
 
-		return mse;
-	}
+        return mse;
+    }
 }
