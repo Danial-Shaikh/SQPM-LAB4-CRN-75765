@@ -6,63 +6,65 @@ import com.opencsv.*;
 import java.util.Arrays;
 
 /**
- * Multiclass Classification Evaluation
- * Computes Cross-Entropy loss and Confusion Matrix from CSV data
+ * Evaluates Multiclass Classification Model
+ * Computes Cross-Entropy loss and Confusion Matrix from CSV input
  */
-public class App {
-	public static void main(String[] args) {
-		String filePath = "model.csv";
-		FileReader filereader;
-		List<String[]> allData;
+public class ModelEvaluator {
+    public static void main(String[] args) {
+        String filePath = "model.csv";
+        List<String[]> data;
+        
+        try (FileReader fileReader = new FileReader(filePath);
+             CSVReader csvReader = new CSVReaderBuilder(fileReader).withSkipLines(1).build()) {
+            data = csvReader.readAll();
+        } catch (Exception e) {
+            System.err.println("Error: Unable to read CSV file.");
+            return;
+        }
 
-		try {
-			// Read CSV file while skipping the header
-			filereader = new FileReader(filePath);
-			CSVReader csvReader = new CSVReaderBuilder(filereader).withSkipLines(1).build();
-			allData = csvReader.readAll();
-		} catch (Exception e) {
-			System.out.println("Error reading the CSV file");
-			return;
-		}
+        final int CLASS_COUNT = 5; // Assuming classification into 5 classes
+        int totalSamples = data.size();
+        double crossEntropyLoss = 0.0;
+        int[][] confusionMatrix = new int[CLASS_COUNT][CLASS_COUNT];
 
-		int numClasses = 5; // Assuming 5 classes (1 to 5)
-		int n = allData.size(); // Number of samples
-		double crossEntropy = 0.0;
-		int[][] confusionMatrix = new int[numClasses][numClasses]; // Confusion matrix
+        for (String[] row : data) {
+            int actualClass = Integer.parseInt(row[0]) - 1; // Convert to zero-based index
+            float[] predictedProbs = new float[CLASS_COUNT];
 
-		// Process each row in the CSV
-		for (String[] row : allData) {
-			int y_true = Integer.parseInt(row[0]) - 1; // Convert class index to 0-based
-			float[] y_predicted = new float[numClasses];
+            for (int i = 0; i < CLASS_COUNT; i++) {
+                predictedProbs[i] = Float.parseFloat(row[i + 1]);
+            }
 
-			// Read predicted probabilities
-			for (int i = 0; i < numClasses; i++) {
-				y_predicted[i] = Float.parseFloat(row[i + 1]);
-			}
+            int predictedClass = getPredictedClass(predictedProbs);
+            confusionMatrix[actualClass][predictedClass]++;
+            crossEntropyLoss += Math.log(predictedProbs[actualClass] + 1e-9); // Avoid log(0)
+        }
 
-			// Find predicted class (index of max probability)
-			int y_pred = 0;
-			for (int i = 1; i < numClasses; i++) {
-				if (y_predicted[i] > y_predicted[y_pred]) {
-					y_pred = i;
-				}
-			}
+        crossEntropyLoss = -crossEntropyLoss / totalSamples;
 
-			// Update confusion matrix
-			confusionMatrix[y_true][y_pred]++;
+        displayResults(crossEntropyLoss, confusionMatrix);
+    }
 
-			// Compute cross-entropy loss
-			crossEntropy += Math.log(y_predicted[y_true]);
-		}
+    private static int getPredictedClass(float[] probabilities) {
+        int maxIndex = 0;
+        for (int i = 1; i < probabilities.length; i++) {
+            if (probabilities[i] > probabilities[maxIndex]) {
+                maxIndex = i;
+            }
+        }
+        return maxIndex;
+    }
 
-		// Compute final cross-entropy loss
-		crossEntropy = -crossEntropy / n;
-
-		// Display results
-		System.out.println("Cross-Entropy Loss: " + crossEntropy);
-		System.out.println("Confusion Matrix:");
-		for (int i = 0; i < numClasses; i++) {
-			System.out.println(Arrays.toString(confusionMatrix[i]));
-		}
-	}
+    private static void displayResults(double ceLoss, int[][] matrix) {
+        System.out.printf("CE =%.7f\n", ceLoss);
+        System.out.println("Confusion matrix");
+        System.out.println("\t\ty=1\ty=2\ty=3\ty=4\ty=5");
+        for (int i = 0; i < matrix.length; i++) {
+            System.out.printf("y^=%d", i + 1);
+            for (int j = 0; j < matrix[i].length; j++) {
+                System.out.printf("\t%d", matrix[i][j]);
+            }
+            System.out.println();
+        }
+    }
 }
