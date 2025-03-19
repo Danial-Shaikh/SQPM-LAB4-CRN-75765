@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * This program evaluates regression models based on error metrics and identifies the best model.
  */
-public class ModelEvaluator {
+public class App {
     public static void main(String[] args) {
         // CSV files containing model results
         String[] models = {"model_1.csv", "model_2.csv", "model_3.csv"};
