@@ -9,7 +9,7 @@ import java.util.Arrays;
  * Evaluates Multiclass Classification Model
  * Computes Cross-Entropy loss and Confusion Matrix from CSV input
  */
-public class ModelEvaluator {
+public class App {
     public static void main(String[] args) {
         String filePath = "model.csv";
         List<String[]> data;
