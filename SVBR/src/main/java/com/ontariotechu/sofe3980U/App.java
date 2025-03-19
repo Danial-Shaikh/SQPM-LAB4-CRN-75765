@@ -7,118 +7,98 @@ import com.opencsv.*;
 /**
  * Evaluate Single Variable Binary Regression
  */
-public class App
-{
-	public static void main(String[] args) {
-		// Define model file names
-		String[] modelFiles = {"model_1.csv", "model_2.csv", "model_3.csv"};
-		String bestModel = "";
-		double bestAUC = 0.0;
+public class App {
+    public static void main(String[] args) {
+        String[] modelFiles = {"model_1.csv", "model_2.csv", "model_3.csv"};
+        String bestModel = "";
+        double bestAUC = 0.0;
 
-		for (String filePath : modelFiles) {
-			System.out.println("Evaluating " + filePath);
-			double auc = evaluateModel(filePath);
-			if (auc > bestAUC) {
-				bestAUC = auc;
-				bestModel = filePath;
-			}
-			System.out.println("---------------------------------------------");
-		}
+        for (String filePath : modelFiles) {
+            System.out.println("Evaluating " + filePath);
+            double auc = evaluateModel(filePath);
+            if (auc > bestAUC) {
+                bestAUC = auc;
+                bestModel = filePath;
+            }
+            System.out.println("---------------------------------------------");
+        }
 
-		// Display the best model based on AUC-ROC
-		System.out.println("Best performing model: " + bestModel + " with AUC-ROC = " + bestAUC);
-	}
+        System.out.printf("Best performing model: %s with AUC-ROC = %.6f%n", bestModel, bestAUC);
+    }
 
-	public static double evaluateModel(String filePath) {
-		List<String[]> allData;
-		try {
-			FileReader filereader = new FileReader(filePath);
-			CSVReader csvReader = new CSVReaderBuilder(filereader).withSkipLines(1).build();
-			allData = csvReader.readAll();
-		} catch (Exception e) {
-			System.out.println("Error reading the CSV file: " + filePath);
-			return 0.0;
-		}
+    private static double evaluateModel(String filePath) {
+        List<String[]> allData;
+        try (FileReader filereader = new FileReader(filePath);
+             CSVReader csvReader = new CSVReaderBuilder(filereader).withSkipLines(1).build()) {
+            allData = csvReader.readAll();
+        } catch (Exception e) {
+            System.err.println("Error reading the CSV file: " + filePath);
+            return 0.0;
+        }
 
-		int TP = 0, FP = 0, TN = 0, FN = 0;
-		double BCE = 0.0;
-		int n = allData.size();
-		double threshold = 0.5;
-		List<Double> y_true_list = new ArrayList<>();
-		List<Double> y_pred_list = new ArrayList<>();
+        int TP = 0, FP = 0, TN = 0, FN = 0;
+        double BCE = 0.0;
+        int n = allData.size();
+        double threshold = 0.5;
+        List<Double> yTrueList = new ArrayList<>(), yPredList = new ArrayList<>();
 
-		// Process each row in the CSV file
-		for (String[] row : allData) {
-			double y_true = Double.parseDouble(row[0]);
-			double y_pred = Double.parseDouble(row[1]);
+        for (String[] row : allData) {
+            double yTrue = Double.parseDouble(row[0]);
+            double yPred = Double.parseDouble(row[1]);
+            int yPredBinary = (yPred >= threshold) ? 1 : 0;
 
-			// Convert predicted value to binary
-			int y_pred_binary = (y_pred >= threshold) ? 1 : 0;
+            if (yTrue == 1) {
+                if (yPredBinary == 1) TP++; else FN++;
+            } else {
+                if (yPredBinary == 1) FP++; else TN++;
+            }
 
-			// Compute confusion matrix values
-			if (y_true == 1 && y_pred_binary == 1) TP++;
-			else if (y_true == 0 && y_pred_binary == 1) FP++;
-			else if (y_true == 0 && y_pred_binary == 0) TN++;
-			else if (y_true == 1 && y_pred_binary == 0) FN++;
+            BCE += yTrue * Math.log(yPred + 1e-9) + (1 - yTrue) * Math.log(1 - yPred + 1e-9);
+            yTrueList.add(yTrue);
+            yPredList.add(yPred);
+        }
 
-			// Compute Binary Cross-Entropy
-			BCE += y_true * Math.log(y_pred + 1e-9) + (1 - y_true) * Math.log(1 - y_pred + 1e-9);
+        BCE = -BCE / n;
+        double accuracy = (double) (TP + TN) / n;
+        double precision = (TP + FP) > 0 ? (double) TP / (TP + FP) : 0;
+        double recall = (TP + FN) > 0 ? (double) TP / (TP + FN) : 0;
+        double f1Score = (precision + recall) > 0 ? 2 * (precision * recall) / (precision + recall) : 0;
+        double aucRoc = calculateAUC(yTrueList, yPredList);
 
-			// Store values for AUC-ROC computation
-			y_true_list.add(y_true);
-			y_pred_list.add(y_pred);
-		}
+        System.out.printf("BCE: %.7f%n", BCE);
+        System.out.printf("Confusion Matrix: TP=%d FP=%d TN=%d FN=%d%n", TP, FP, TN, FN);
+        System.out.printf("Accuracy: %.4f%nPrecision: %.8f%nRecall: %.8f%nF1 Score: %.8f%nAUC-ROC: %.8f%n",
+                accuracy, precision, recall, f1Score, aucRoc);
 
-		BCE = -BCE / n; // Final BCE calculation
-		double accuracy = (double) (TP + TN) / (TP + TN + FP + FN);
-		double precision = (TP + FP) > 0 ? (double) TP / (TP + FP) : 0;
-		double recall = (TP + FN) > 0 ? (double) TP / (TP + FN) : 0;
-		double f1_score = (precision + recall) > 0 ? 2 * (precision * recall) / (precision + recall) : 0;
-		double auc_roc = calculateAUC(y_true_list, y_pred_list);
+        return aucRoc;
+    }
 
-		// Print results
-		System.out.println("BCE: " + BCE);
-		System.out.println("Confusion Matrix: TP=" + TP + " FP=" + FP + " TN=" + TN + " FN=" + FN);
-		System.out.println("Accuracy: " + accuracy);
-		System.out.println("Precision: " + precision);
-		System.out.println("Recall: " + recall);
-		System.out.println("F1 Score: " + f1_score);
-		System.out.println("AUC-ROC: " + auc_roc);
+    private static double calculateAUC(List<Double> yTrue, List<Double> yPred) {
+        int n = yTrue.size();
+        int nPositive = (int) yTrue.stream().filter(y -> y == 1).count();
+        int nNegative = n - nPositive;
+        List<Double> thresholds = new ArrayList<>();
+        for (int i = 0; i <= 100; i++) thresholds.add(i / 100.0);
 
-		return auc_roc;
-	}
+        List<Double> tpr = new ArrayList<>(), fpr = new ArrayList<>();
+        for (double th : thresholds) {
+            int TP = 0, FP = 0, FN = 0, TN = 0;
+            for (int i = 0; i < n; i++) {
+                int predBinary = (yPred.get(i) >= th) ? 1 : 0;
+                if (yTrue.get(i) == 1) {
+                    if (predBinary == 1) TP++; else FN++;
+                } else {
+                    if (predBinary == 1) FP++; else TN++;
+                }
+            }
+            tpr.add(nPositive > 0 ? (double) TP / nPositive : 0);
+            fpr.add(nNegative > 0 ? (double) FP / nNegative : 0);
+        }
 
-	// Function to calculate AUC-ROC
-	public static double calculateAUC(List<Double> y_true, List<Double> y_pred) {
-		int n = y_true.size();
-		int n_positive = (int) y_true.stream().filter(y -> y == 1).count();
-		int n_negative = n - n_positive;
-		List<Double> thresholds = new ArrayList<>();
-		for (int i = 0; i <= 100; i++) {
-			thresholds.add(i / 100.0);
-		}
-
-		List<Double> tpr = new ArrayList<>();
-		List<Double> fpr = new ArrayList<>();
-
-		for (double th : thresholds) {
-			int TP = 0, FP = 0, FN = 0, TN = 0;
-			for (int i = 0; i < n; i++) {
-				int pred_binary = (y_pred.get(i) >= th) ? 1 : 0;
-				if (y_true.get(i) == 1 && pred_binary == 1) TP++;
-				else if (y_true.get(i) == 0 && pred_binary == 1) FP++;
-				else if (y_true.get(i) == 0 && pred_binary == 0) TN++;
-				else if (y_true.get(i) == 1 && pred_binary == 0) FN++;
-			}
-			tpr.add(n_positive > 0 ? (double) TP / n_positive : 0);
-			fpr.add(n_negative > 0 ? (double) FP / n_negative : 0);
-		}
-
-		// Compute AUC using the trapezoidal rule
-		double auc = 0.0;
-		for (int i = 1; i < tpr.size(); i++) {
-			auc += (tpr.get(i - 1) + tpr.get(i)) * Math.abs(fpr.get(i - 1) - fpr.get(i)) / 2;
-		}
-		return auc;
-	}
+        double auc = 0.0;
+        for (int i = 1; i < tpr.size(); i++) {
+            auc += (tpr.get(i - 1) + tpr.get(i)) * Math.abs(fpr.get(i - 1) - fpr.get(i)) / 2;
+        }
+        return auc;
+    }
 }
