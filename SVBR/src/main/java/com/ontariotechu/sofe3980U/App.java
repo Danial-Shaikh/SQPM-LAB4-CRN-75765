@@ -4,79 +4,83 @@ import java.io.FileReader;
 import java.util.*;
 import com.opencsv.*;
 
-/**
- * Evaluate Single Variable Binary Regression
- */
-public class App {
+public class ModelEvaluator {
     public static void main(String[] args) {
         String[] modelFiles = {"model_1.csv", "model_2.csv", "model_3.csv"};
-        String bestModel = "";
-        double bestAUC = 0.0;
+        Map<String, Double> metrics = new HashMap<>();
 
-        for (String filePath : modelFiles) {
-            System.out.println("Evaluating " + filePath);
-            double auc = evaluateModel(filePath);
-            if (auc > bestAUC) {
-                bestAUC = auc;
-                bestModel = filePath;
-            }
-            System.out.println("---------------------------------------------");
+        for (String file : modelFiles) {
+            System.out.println("for " + file);
+            double auc = processModel(file);
+            metrics.put(file, auc);
+            System.out.println();
         }
 
-        System.out.printf("Best performing model: %s with AUC-ROC = %.6f%n", bestModel, bestAUC);
+        determineBestModel(metrics);
     }
 
-    private static double evaluateModel(String filePath) {
-        List<String[]> allData;
-        try (FileReader filereader = new FileReader(filePath);
-             CSVReader csvReader = new CSVReaderBuilder(filereader).withSkipLines(1).build()) {
-            allData = csvReader.readAll();
+    private static double processModel(String fileName) {
+        List<String[]> records;
+        try (FileReader reader = new FileReader(fileName);
+             CSVReader csvReader = new CSVReaderBuilder(reader).withSkipLines(1).build()) {
+            records = csvReader.readAll();
         } catch (Exception e) {
-            System.err.println("Error reading the CSV file: " + filePath);
+            System.err.println("Error reading file: " + fileName);
             return 0.0;
         }
 
         int TP = 0, FP = 0, TN = 0, FN = 0;
         double BCE = 0.0;
-        int n = allData.size();
+        int total = records.size();
         double threshold = 0.5;
-        List<Double> yTrueList = new ArrayList<>(), yPredList = new ArrayList<>();
+        List<Double> actuals = new ArrayList<>(), predictions = new ArrayList<>();
 
-        for (String[] row : allData) {
-            double yTrue = Double.parseDouble(row[0]);
-            double yPred = Double.parseDouble(row[1]);
-            int yPredBinary = (yPred >= threshold) ? 1 : 0;
+        for (String[] record : records) {
+            double actual = Double.parseDouble(record[0]);
+            double predicted = Double.parseDouble(record[1]);
+            int predictedLabel = (predicted >= threshold) ? 1 : 0;
 
-            if (yTrue == 1) {
-                if (yPredBinary == 1) TP++; else FN++;
+            if (actual == 1) {
+                if (predictedLabel == 1) TP++; else FN++;
             } else {
-                if (yPredBinary == 1) FP++; else TN++;
+                if (predictedLabel == 1) FP++; else TN++;
             }
 
-            BCE += yTrue * Math.log(yPred + 1e-9) + (1 - yTrue) * Math.log(1 - yPred + 1e-9);
-            yTrueList.add(yTrue);
-            yPredList.add(yPred);
+            BCE += actual * Math.log(predicted + 1e-9) + (1 - actual) * Math.log(1 - predicted + 1e-9);
+            actuals.add(actual);
+            predictions.add(predicted);
         }
 
-        BCE = -BCE / n;
-        double accuracy = (double) (TP + TN) / n;
+        BCE = -BCE / total;
+        double accuracy = (double) (TP + TN) / total;
         double precision = (TP + FP) > 0 ? (double) TP / (TP + FP) : 0;
         double recall = (TP + FN) > 0 ? (double) TP / (TP + FN) : 0;
-        double f1Score = (precision + recall) > 0 ? 2 * (precision * recall) / (precision + recall) : 0;
-        double aucRoc = calculateAUC(yTrueList, yPredList);
+        double f1 = (precision + recall) > 0 ? 2 * (precision * recall) / (precision + recall) : 0;
+        double aucRoc = computeAUC(actuals, predictions);
 
-        System.out.printf("BCE: %.7f%n", BCE);
-        System.out.printf("Confusion Matrix: TP=%d FP=%d TN=%d FN=%d%n", TP, FP, TN, FN);
-        System.out.printf("Accuracy: %.4f%nPrecision: %.8f%nRecall: %.8f%nF1 Score: %.8f%nAUC-ROC: %.8f%n",
-                accuracy, precision, recall, f1Score, aucRoc);
+        System.out.printf("        BCE =%.7f%n", BCE);
+        System.out.println("        Confusion matrix");
+        System.out.println("                        y=1      y=0");
+        System.out.printf("                y^=1    %-8d %-8d%n", TP, FP);
+        System.out.printf("                y^=0    %-8d %-8d%n", FN, TN);
+        System.out.printf("        Accuracy =%.4f%n", accuracy);
+        System.out.printf("        Precision =%.8f%n", precision);
+        System.out.printf("        Recall =%.8f%n", recall);
+        System.out.printf("        f1 score =%.8f%n", f1);
+        System.out.printf("        auc roc =%.8f%n", aucRoc);
 
         return aucRoc;
     }
 
-    private static double calculateAUC(List<Double> yTrue, List<Double> yPred) {
+    private static void determineBestModel(Map<String, Double> metrics) {
+        String bestModel = Collections.max(metrics.entrySet(), Map.Entry.comparingByValue()).getKey();
+        System.out.printf("According to AUC ROC, The best model is %s%n", bestModel);
+    }
+
+    private static double computeAUC(List<Double> yTrue, List<Double> yPred) {
         int n = yTrue.size();
-        int nPositive = (int) yTrue.stream().filter(y -> y == 1).count();
-        int nNegative = n - nPositive;
+        int positives = (int) yTrue.stream().filter(y -> y == 1).count();
+        int negatives = n - positives;
         List<Double> thresholds = new ArrayList<>();
         for (int i = 0; i <= 100; i++) thresholds.add(i / 100.0);
 
@@ -91,8 +95,8 @@ public class App {
                     if (predBinary == 1) FP++; else TN++;
                 }
             }
-            tpr.add(nPositive > 0 ? (double) TP / nPositive : 0);
-            fpr.add(nNegative > 0 ? (double) FP / nNegative : 0);
+            tpr.add(positives > 0 ? (double) TP / positives : 0);
+            fpr.add(negatives > 0 ? (double) FP / negatives : 0);
         }
 
         double auc = 0.0;
